@@ -22,11 +22,11 @@
 #define MAX_ALTITUDE 100.0f
 #define WORLD_SIZE 100000.0f
 #define TREE_COUNT 200
+#define MAX_ENEMIES 5
+#define RADAR_RANGE 50.0f
 
-// Ham chuyen do sang radian
 GLfloat radians(GLfloat a);
 
-// Bien toan cuc cho vi tri, huong, trang thai
 float angleX = 0.0f, angleY = 0.0f;
 float xpos = 0.0f, ypos = 0.5f, zpos = 0.0f;
 float speed = 0.0f, direction = 0.0f;
@@ -40,7 +40,6 @@ int isCockpitView = 0;
 int gearDown = 1;
 int isWireframe = 0;
 
-// Cau truc hat cho hieu ung (khoi, lua)
 typedef struct {
     float x, y, z;
     float vx, vy, vz;
@@ -53,20 +52,24 @@ Particle wingTrails[WING_TRAIL_COUNT];
 Particle explosion[PARTICLE_COUNT];
 Particle clouds[CLOUD_COUNT];
 
-// Cau truc cay tren dia hinh
 typedef struct {
     float x, z;
 } Tree;
 Tree trees[TREE_COUNT];
 
-// Tinh do cao dia hinh bang sin va cos
+typedef struct {
+    float x, z; // Position relative to airplane
+    float life; // Lifetime in seconds
+    int active; // 1 if active, 0 if inactive
+} Enemy;
+Enemy enemies[MAX_ENEMIES];
+
 float terrainHeight(float x, float z) {
     float x_mod = fmod(x + TERRAIN_SCALE * 2, TERRAIN_SCALE * 2) - TERRAIN_SCALE;
     float z_mod = fmod(z + TERRAIN_SCALE * 2, TERRAIN_SCALE * 2) - TERRAIN_SCALE;
     return 0.5f + 0.5f * sin(x_mod / 10.0f) * cos(z_mod / 10.0f);
 }
 
-// Chuyen toa do cuc bo sang toa do the gioi
 void localToWorld(float localX, float localY, float localZ, float* worldX, float* worldY, float* worldZ) {
     float radDir = radians(direction);
     float radPitch = radians(angleX);
@@ -87,7 +90,6 @@ void localToWorld(float localX, float localY, float localZ, float* worldX, float
     *worldZ = zpos + finalZ;
 }
 
-// Khoi tao hat cho hieu ung (lua, khoi)
 void initParticles(Particle* particles, int count, float x, float y, float z, int isExplosion, int isWingTrail) {
     for (int i = 0; i < count; i++) {
         particles[i].x = x;
@@ -121,7 +123,6 @@ void initParticles(Particle* particles, int count, float x, float y, float z, in
     }
 }
 
-// Khoi tao dam may ngau nhien quanh may bay
 void initClouds() {
     for (int i = 0; i < CLOUD_COUNT; i++) {
         clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
@@ -135,28 +136,59 @@ void initClouds() {
     }
 }
 
-// Khoi tao cay ngau nhien, tranh duong bang
 void initTrees() {
     for (int i = 0; i < TREE_COUNT; i++) {
         do {
             trees[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
             trees[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
-        } while (fabs(trees[i].x) < 10.0f && fabs(trees[i].z) < 2.0f); // Tranh khu vuc duong bang
+        } while (fabs(trees[i].x) < 10.0f && fabs(trees[i].z) < 2.0f);
     }
 }
 
-// Ve cay voi than (nau) va tan la (xanh)
+void initEnemies() {
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        enemies[i].x = 0.0f;
+        enemies[i].z = 0.0f;
+        enemies[i].life = 0.0f;
+        enemies[i].active = 0;
+    }
+}
+
+void updateRadar() {
+    // Update existing enemies
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (enemies[i].active) {
+            enemies[i].life -= 0.016f; // Assume 60 FPS (1/60 = 0.016 seconds per frame)
+            if (enemies[i].life <= 0.0f) {
+                enemies[i].active = 0;
+            }
+        }
+    }
+
+    // Randomly spawn new enemies
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (!enemies[i].active && (float)rand() / RAND_MAX < 0.02f) { // 2% chance per frame
+            float angle = (float)rand() / RAND_MAX * 2.0f * PI;
+            float distance = (float)rand() / RAND_MAX * RADAR_RANGE;
+            enemies[i].x = distance * cos(angle);
+            enemies[i].z = distance * sin(angle);
+            enemies[i].life = 3.0f + (float)rand() / RAND_MAX * 2.0f; // 3-5 seconds
+            enemies[i].active = 1;
+        }
+    }
+}
+
 void drawTrees() {
     for (int i = 0; i < TREE_COUNT; i++) {
         float y = terrainHeight(trees[i].x, trees[i].z);
         glPushMatrix();
         glTranslatef(trees[i].x, y, trees[i].z);
-        glColor3f(0.6f, 0.3f, 0.0f); // Than cay mau nau
+        glColor3f(0.6f, 0.3f, 0.0f);
         glPushMatrix();
         glScalef(0.1f, 0.5f, 0.1f);
         glutSolidCube(1.0f);
         glPopMatrix();
-        glColor3f(0.0f, 0.6f, 0.0f); // Tan la mau xanh
+        glColor3f(0.0f, 0.6f, 0.0f);
         glPushMatrix();
         glTranslatef(0.0f, 0.5f, 0.0f);
         glRotatef(-90.0f, 1.0f, 0.0f, 0.0f);
@@ -166,11 +198,10 @@ void drawTrees() {
     }
 }
 
-// Ve duong bang mau xam
 void drawRunway() {
-    glColor3f(0.5f, 0.5f, 0.5f); // Mau xam
+    glColor3f(0.5f, 0.5f, 0.5f);
     glBegin(GL_QUADS);
-    float y = terrainHeight(0.0f, 0.0f) + 0.01f; // Nang nhe tranh xung dot Z
+    float y = terrainHeight(0.0f, 0.0f) + 0.01f;
     glVertex3f(-10.0f, y, -2.0f);
     glVertex3f(10.0f, y, -2.0f);
     glVertex3f(10.0f, y, 2.0f);
@@ -178,7 +209,6 @@ void drawRunway() {
     glEnd();
 }
 
-// Di chuyen hat dua tren van toc va thoi gian song
 void moveParticles(Particle* particles, int count, float dt, int isExplosion) {
     for (int i = 0; i < count; i++) {
         if (particles[i].life > 0.0f) {
@@ -190,7 +220,6 @@ void moveParticles(Particle* particles, int count, float dt, int isExplosion) {
     }
 }
 
-// Di chuyen dam may, tai tao neu qua xa may bay
 void moveClouds() {
     for (int i = 0; i < CLOUD_COUNT; i++) {
         if (clouds[i].life > 0.0f) {
@@ -206,7 +235,6 @@ void moveClouds() {
     }
 }
 
-// Ve hat voi hieu ung pha tron cho khoi/lua
 void drawParticles(Particle* particles, int count, int isFireDefault, int isWingTrail) {
     glEnable(GL_BLEND);
     if ((particles == afterburner || isWingTrail) && isFireDefault) {
@@ -240,7 +268,6 @@ void drawParticles(Particle* particles, int count, int isFireDefault, int isWing
     glPointSize(1.0f);
 }
 
-// Ve dam may hinh cau trong throughout
 void drawClouds() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -256,10 +283,9 @@ void drawClouds() {
     glDisable(GL_BLEND);
 }
 
-// Dat lai mo phong ve trang thai ban dau
 void resetSimulation() {
-    xpos = -8.0f; // Bat dau tren duong bang
-    ypos = terrainHeight(-8.0f, 0.0f) + 0.2f; // Nang nhe tren duong bang
+    xpos = -8.0f;
+    ypos = terrainHeight(-8.0f, 0.0f) + 0.2f;
     zpos = 0.0f;
     speed = 0.0f;
     direction = 0.0f;
@@ -282,10 +308,10 @@ void resetSimulation() {
     initParticles(explosion, PARTICLE_COUNT, 0.0f, 0.0f, 0.0f, 1, 0);
     initClouds();
     initTrees();
+    initEnemies();
     printf("Da dat lai trang thai ban dau tren duong bang.\n");
 }
 
-// Ve may bay khong co co tren canh
 void plane() {
     if (isWireframe) {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -293,14 +319,14 @@ void plane() {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
-    glColor3d(1.0, 0.0, 0.0); // Than may bay mau do
+    glColor3d(1.0, 0.0, 0.0);
     glPushMatrix();
         glTranslated(0, 0, 0);
         glScaled(3, 0.4, 0.5);
         glutSolidSphere(1, 30, 30);
     glPopMatrix();
 
-    glColor3d(0, 0, 0); // Buong lai mau den
+    glColor3d(0, 0, 0);
     glPushMatrix();
         glTranslated(1.7, 0.1, 0);
         glScaled(1.5, 0.7, 0.8);
@@ -308,7 +334,7 @@ void plane() {
         glutSolidSphere(0.45, 30, 30);
     glPopMatrix();
 
-    glColor3f(1.0f, 1.0f, 0.0f); // Canh phai mau vang
+    glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
         glTranslated(0, 0, 1.2);
         glRotated(-50, 0, 1, 0);
@@ -318,19 +344,19 @@ void plane() {
     glPopMatrix();
 
     glPushMatrix();
-        glTranslated(-0.3, -0.15, 1.5); // Banh xe canh phai
+        glTranslated(-0.3, -0.15, 1.5);
         glRotated(90, 0, 1, 0);
         glScaled(0.1, 0.1, 0.9);
         glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
     glPushMatrix();
-        glTranslated(0.2, -0.15, 0.9); // Banh xe canh phai
+        glTranslated(0.2, -0.15, 0.9);
         glRotated(90, 0, 1, 0);
         glScaled(0.1, 0.1, 0.9);
         glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
 
-    glColor3f(1.0f, 1.0f, 0.0f); // Canh trai mau vang
+    glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
         glTranslated(0, 0, -1.2);
         glRotated(50, 0, 1, 0);
@@ -340,19 +366,19 @@ void plane() {
     glPopMatrix();
 
     glPushMatrix();
-        glTranslated(-0.3, -0.15, -1.5); // Banh xe canh trai
+        glTranslated(-0.3, -0.15, -1.5);
         glRotated(90, 0, 1, 0);
         glScaled(0.1, 0.1, 0.9);
         glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
     glPushMatrix();
-        glTranslated(0.2, -0.15, -0.9); // Banh xe canh trai
+        glTranslated(0.2, -0.15, -0.9);
         glRotated(90, 0, 1, 0);
         glScaled(0.1, 0.1, 0.9);
         glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
 
-    glColor3f(1.0f, 1.0f, 0.0f); // Canh duoi mau vang
+    glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
         glTranslated(-2.8, 0, 0);
         glScaled(0.8, 0.5, 0.3);
@@ -372,7 +398,7 @@ void plane() {
         glPopMatrix();
     glPopMatrix();
 
-    glColor3f(1.0f, 1.0f, 0.0f); // Duoi doc mau vang
+    glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
         glTranslated(-2.7, 0.5, 0);
         glRotated(45, 0, 0, 1);
@@ -381,7 +407,6 @@ void plane() {
         glutSolidCube(0.5);
     glPopMatrix();
 
-    // Ve banh xe neu gearDown = 1
     if (gearDown) {
         glColor3f(0.1f, 0.1f, 0.1f);
         glPushMatrix();
@@ -426,7 +451,6 @@ void plane() {
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
-// Ve dia hinh voi duong bang va cay
 void drawTerrain() {
     glColor3f(0.3f, 0.2f, 0.1f);
     glBegin(GL_QUADS);
@@ -448,7 +472,6 @@ void drawTerrain() {
     drawTrees();
 }
 
-// Ve luoi tren mat dat de tham chieu
 void landmarks() {
     GLfloat i;
     glColor3f(0.0f, 1.0f, 0.0f);
@@ -465,17 +488,14 @@ void landmarks() {
     glEnd();
 }
 
-// Tinh gia tri tuyet doi
 GLfloat Abs(GLfloat a) {
     return (a < 0.0f) ? -a : a;
 }
 
-// Chuyen do sang radian
 GLfloat radians(GLfloat a) {
     return a * PI / 180.0f;
 }
 
-// Ve thanh do cao ben man hinh
 void drawAltitudeBar() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -532,11 +552,76 @@ void drawAltitudeBar() {
         }
     }
 
-    glRasterPos2f(20, 30);
-  
-    for (char* c = label; *c != '\0'; c++) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void drawCompass() {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, 1200, 0, 600);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+
+    float centerX = 1100.0f;
+    float centerY = 100.0f;
+    float radius = 40.0f;
+
+    glColor3f(0.2f, 0.2f, 0.2f);
+    glBegin(GL_POLYGON);
+    for (int i = 0; i < 360; i += 5) {
+        float rad = radians(i);
+        glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
     }
+    glEnd();
+
+    glLineWidth(2.0f);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < 360; i += 5) {
+        float rad = radians(i);
+        glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
+    }
+    glEnd();
+    glLineWidth(1.0f);
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+    const char* directions[] = {"N", "E", "S", "W"};
+    float labelAngles[] = {0.0f, 90.0f, 180.0f, 270.0f};
+    for (int i = 0; i < 4; i++) {
+        float rad = radians(labelAngles[i]);
+        float labelX = centerX + (radius + 10.0f) * cos(rad);
+        float labelY = centerY + (radius + 10.0f) * sin(rad);
+        glRasterPos2f(labelX - 5.0f, labelY - 5.0f);
+        for (const char* c = directions[i]; *c != '\0'; c++) {
+            glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
+        }
+    }
+
+    glPushMatrix();
+    glTranslatef(centerX, centerY, 0.0f);
+    glRotatef(-direction, 0.0f, 0.0f, 1.0f);
+    glColor3f(1.0f, 0.0f, 0.0f);
+    glBegin(GL_LINES);
+    glVertex2f(0.0f, -radius * 0.8f);
+    glVertex2f(0.0f, radius * 0.8f);
+    glEnd();
+    glBegin(GL_TRIANGLES);
+    glVertex2f(-5.0f, radius * 0.6f);
+    glVertex2f(5.0f, radius * 0.6f);
+    glVertex2f(0.0f, radius * 0.8f);
+    glEnd();
+    glPopMatrix();
 
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
@@ -545,11 +630,94 @@ void drawAltitudeBar() {
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
-
-    printf(" Thanh cao: %.1f pixel\n", altitudeKm, barHeight);
 }
 
-// Cap nhat mo phong, di chuyen may bay va hat
+void drawRadar() {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, 1200, 0, 600);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+
+    float centerX = 1000.0f;
+    float centerY = 100.0f;
+    float radius = 40.0f;
+    float scale = radius / RADAR_RANGE; // Pixels per unit
+
+    // Draw radar background (dark gray)
+    glColor3f(0.2f, 0.2f, 0.2f);
+    glBegin(GL_POLYGON);
+    for (int i = 0; i < 360; i += 5) {
+        float rad = radians(i);
+        glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
+    }
+    glEnd();
+
+    // Draw radar border (white)
+    glLineWidth(2.0f);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < 360; i += 5) {
+        float rad = radians(i);
+        glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
+    }
+    glEnd();
+    glLineWidth(1.0f);
+
+    // Draw radar sweep (green semi-transparent sector)
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    float sweepAngle = fmod(glutGet(GLUT_ELAPSED_TIME) / 4000.0f * 360.0f, 360.0f); // 4-second rotation
+    glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(centerX, centerY);
+    for (int i = 0; i <= 30; i++) {
+        float angle = radians(sweepAngle + i);
+        glVertex2f(centerX + radius * cos(angle), centerY + radius * sin(angle));
+    }
+    glEnd();
+    glDisable(GL_BLEND);
+
+    // Draw enemies as red dots
+    glPointSize(5.0f);
+    glColor3f(1.0f, 0.0f, 0.0f);
+    glBegin(GL_POINTS);
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        if (enemies[i].active) {
+            float screenX = centerX + enemies[i].x * scale;
+            float screenZ = centerY + enemies[i].z * scale;
+            glVertex2f(screenX, screenZ);
+        }
+    }
+    glEnd();
+    glPointSize(1.0f);
+
+    // Draw airplane as a small white triangle
+    glPushMatrix();
+    glTranslatef(centerX, centerY, 0.0f);
+    glRotatef(-direction, 0.0f, 0.0f, 1.0f);
+    glColor3f(1.0f, 1.0f, 1.0f);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(0.0f, 6.0f);   // Nose
+    glVertex2f(-3.0f, -3.0f); // Left wing
+    glVertex2f(3.0f, -3.0f);  // Right wing
+    glEnd();
+    glPopMatrix();
+
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
 void advanceScene() {
     GLfloat xDelta, zDelta, yDelta;
 
@@ -587,6 +755,8 @@ void advanceScene() {
     moveParticles(explosion, PARTICLE_COUNT, 0.016f, 1);
 
     moveClouds();
+
+    updateRadar();
 
     if (speed > 0.0f && gearDown) {
         float drag = DECELERATION + 0.0001f * Abs(angleX);
@@ -627,7 +797,6 @@ void advanceScene() {
     }
 }
 
-// Ve HUD voi thong tin toc do, do cao va huong dan dieu khien
 void drawHUD() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
@@ -637,39 +806,39 @@ void drawHUD() {
     glPushMatrix();
     glLoadIdentity();
 
-    // Ve thong tin chinh
     glColor3f(0.0f, 1.0f, 0.0f);
     float distance = sqrt(xpos * xpos + zpos * zpos);
     float heading = fmod(direction + 360.0f, 360.0f);
     glRasterPos2f(10, 580);
     char hud[100];
-             
+    snprintf(hud, sizeof(hud), "Huong: %.1f deg  Khoang cach: %.1f km", heading, distance);
     for (char* c = hud; *c != '\0'; c++) {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
     }
 
-    // Ve bang huong dan dieu khien o goc tren phai
-    glColor3f(1.0f, 1.0f, 0.0f); // Mau vang cho de doc
+    glColor3f(1.0f, 1.0f, 0.0f);
     const char* controls[] = {
-    
         "Phim Space: Nap nang luong (giu space it nhat 2s)",
         "Phim Up: Tang do cao",
         "Phim Down: Giam do cao",
         "Phim Left: Quay trai",
         "Phim Right: Quay phai",
-        "Phim p: resert ",
+        "Phim p: reset",
         "Phim w: Bat/tat che do khung",
         "Phim c: Doi goc nhin (buong lai)",
-		"Phim Esc: Thoat"
+        "Phim Esc: Thoat"
     };
-    float y_pos = 580.0f; // Vi tri bat dau tu tren xuong
+    float y_pos = 580.0f;
     for (int i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
         glRasterPos2f(900, y_pos);
         for (const char* c = controls[i]; *c != '\0'; c++) {
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
         }
-        y_pos -= 20.0f; // Moi dong cach nhau 20 pixel, ve tu tren xuong
+        y_pos -= 20.0f;
     }
+
+    drawCompass();
+    drawRadar();
 
     glPopMatrix();
     glMatrixMode(GL_PROJECTION);
@@ -677,7 +846,6 @@ void drawHUD() {
     glMatrixMode(GL_MODELVIEW);
 }
 
-// Ham ve chinh de render canh
 void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);
@@ -730,10 +898,9 @@ void display() {
     glutSwapBuffers();
 }
 
-// Xu ly phim dieu khien
 void keyboard(unsigned char key, int x, int y) {
     switch (key) {
-        case 27: // Esc
+        case 27:
             exit(0);
             break;
         case ' ':
@@ -755,12 +922,10 @@ void keyboard(unsigned char key, int x, int y) {
             isCockpitView = !isCockpitView;
             printf("Goc nhin: %s\n", isCockpitView ? "Buong lai" : "Ngoai");
             break;
-        
     }
     glutPostRedisplay();
 }
 
-// Xu ly tha phim
 void keyboardUp(unsigned char key, int x, int y) {
     switch (key) {
         case ' ':
@@ -778,7 +943,6 @@ void keyboardUp(unsigned char key, int x, int y) {
     glutPostRedisplay();
 }
 
-// Xu ly phim dac biet cho goc nghieng va huong
 void specialKeys(int key, int x, int y) {
     switch (key) {
         case GLUT_KEY_UP:
@@ -801,13 +965,11 @@ void specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
-// Ham cap nhat lien tuc
 void idle() {
     advanceScene();
     glutPostRedisplay();
 }
 
-// Xu ly thay doi kich thuoc cua so
 void reshape(int width, int height) {
     glViewport(0, 0, (GLsizei)width, (GLsizei)height);
     glMatrixMode(GL_PROJECTION);
@@ -816,7 +978,6 @@ void reshape(int width, int height) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-// Khoi tao cai dat OpenGL va hat
 void initOpenGL() {
     GLfloat mat_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
     GLfloat mat_shininess[] = {100.0f};
@@ -855,9 +1016,9 @@ void initOpenGL() {
     initParticles(explosion, PARTICLE_COUNT, 0.0f, 0.0f, 0.0f, 1, 0);
     initClouds();
     initTrees();
+    initEnemies();
 }
 
-// Ham chinh khoi dong GLUT va mo phong
 int main(int argc, char* argv[]) {
     srand((unsigned int)time(NULL));
     if (time(NULL) == -1) {
