@@ -1,4 +1,4 @@
-#include<cstdlib>
+#include <cstdlib>
 #include <GL/glut.h>
 #include <math.h>
 #include <stdio.h>
