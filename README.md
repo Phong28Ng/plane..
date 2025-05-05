@@ -4,73 +4,77 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define PI 3.141592653589793
-#define MAX_SPEED 2.0f
-#define DECELERATION 0.001f
-#define THRUST 0.01f
-#define PITCH_RATE 8.0f
-#define YAW_RATE 2.0f
-#define ROLL_RATE 2.0f
-#define MAX_CHARGE 1.0f
-#define PARTICLE_COUNT 100
-#define AFTERBURNER_COUNT 500
-#define WING_TRAIL_COUNT 200
-#define CLOUD_COUNT 150
-#define TERRAIN_SCALE 50.0f
-#define GROUND_SPEED 0.2f
-#define GROUND_THRESHOLD 0.6f
-#define MAX_ALTITUDE 100.0f
-#define WORLD_SIZE 100000.0f
-#define TREE_COUNT 200
-#define MAX_ENEMIES 5
-#define RADAR_RANGE 50.0f
 
+#define PI 3.141592653589793 // Pi de tinh goc
+#define MAX_SPEED 2.0f // Toc do toi da
+#define DECELERATION 0.001f // Giam toc tren mat dat
+#define THRUST 0.01f // Luc day
+#define PITCH_RATE 8.0f // Toc do quay cao do
+#define YAW_RATE 2.0f // Toc do quay huong
+#define ROLL_RATE 2.0f // Toc do quay 
+#define MAX_CHARGE 1.0f // Nang luong toi da
+#define PARTICLE_COUNT 100 // So hat hieu ung
+#define AFTERBURNER_COUNT 500 // Hat dong co
+#define WING_TRAIL_COUNT 100
+#define CLOUD_COUNT 80 // So dam may 
+#define TERRAIN_SCALE 50.0f // Ti le dia hinh
+#define GROUND_SPEED 0.2f // Toc do 
+#define GROUND_THRESHOLD 0.6f // banh xe
+#define MAX_ALTITUDE 100.0f // Do cao toi da
+#define WORLD_SIZE 100000.0f // Kich thuoc the gioi 3D
+#define TREE_COUNT 100 // So cay
+#define MAX_ENEMIES 3 // So vat can mo phong trong rada
+#define RADAR_RANGE 100.0f // Pham vi radar
+
+// Bien toan cuc
 GLfloat radians(GLfloat a);
+float angleX = 0.0f, angleY = 0.0f; 
+float xpos = 0.0f, ypos = 0.5f, zpos = 0.0f; // Vi tri may bay
+float speed = 0.0f, direction = 0.0f; // Toc do, huong
+float camx = 0.0f, camy = 2.0f, camz = 5.0f; // Vi tri camera
+float charge = 0.0f; // Nang luong nap
+int isCharging = 0, isThrusting = 0, isAutoFlying = 0; // Trang thai nap, day, tu dong
+int isSunny = 1, isCockpitView = 0, gearDown = 1, isWireframe = 0; //  goc nhin, banh xe
 
-float angleX = 0.0f, angleY = 0.0f;
-float xpos = 0.0f, ypos = 0.5f, zpos = 0.0f;
-float speed = 0.0f, direction = 0.0f;
-float camx = 0.0f, camy = 2.0f, camz = 5.0f;
-float charge = 0.0f;
-int isCharging = 0;
-int isThrusting = 0;
-int isAutoFlying = 0;
-int isSunny = 1;
-int isCockpitView = 0;
-int gearDown = 1;
-int isWireframe = 0;
-
-typedef struct {
-    float x, y, z;
-    float vx, vy, vz;
-    float life;
-    int isFire;
+// Cau truc cho hat focal
+typedef struct
+{
+    float x, y, z; // Vi tri
+    float vx, vy, vz; // Van toc
+    float life; 
+    int isFire; 
 } Particle;
-Particle boosters[PARTICLE_COUNT];
-Particle afterburner[AFTERBURNER_COUNT];
-Particle wingTrails[WING_TRAIL_COUNT];
-Particle explosion[PARTICLE_COUNT];
-Particle clouds[CLOUD_COUNT];
+Particle boosters[PARTICLE_COUNT], afterburner[AFTERBURNER_COUNT], wingTrails[WING_TRAIL_COUNT], explosion[PARTICLE_COUNT], clouds[CLOUD_COUNT];
 
-typedef struct {
-    float x, z;
+// Cau truc cho cay
+typedef struct
+{
+    float x, z; // Vi tri
 } Tree;
 Tree trees[TREE_COUNT];
 
-typedef struct {
-    float x, z; // Position relative to airplane
-    float life; // Lifetime in seconds
-    int active; // 1 if active, 0 if inactive
+// Cau truc cho vat can
+typedef struct
+{
+    float x, z; // Vi tri
+    float life; // Thoi gian xuat hien
+    int active; // Hoat dong
 } Enemy;
 Enemy enemies[MAX_ENEMIES];
 
-float terrainHeight(float x, float z) {
+// Tinh do cao dia hinh
+float terrainHeight(float x, float z)
+{
+    // Tao dia hinh len xuong bang sin, cos
     float x_mod = fmod(x + TERRAIN_SCALE * 2, TERRAIN_SCALE * 2) - TERRAIN_SCALE;
     float z_mod = fmod(z + TERRAIN_SCALE * 2, TERRAIN_SCALE * 2) - TERRAIN_SCALE;
     return 0.5f + 0.5f * sin(x_mod / 10.0f) * cos(z_mod / 10.0f);
 }
 
-void localToWorld(float localX, float localY, float localZ, float* worldX, float* worldY, float* worldZ) {
+// Chuyen toa do cuc bo sang toa do the gioi
+void localToWorld(float localX, float localY, float localZ, float* worldX, float* worldY, float* worldZ)
+{
+    // Dung goc huong, cao do, lan de tinh toan
     float radDir = radians(direction);
     float radPitch = radians(angleX);
     float radRoll = radians(angleY);
@@ -90,18 +94,25 @@ void localToWorld(float localX, float localY, float localZ, float* worldX, float
     *worldZ = zpos + finalZ;
 }
 
-void initParticles(Particle* particles, int count, float x, float y, float z, int isExplosion, int isWingTrail) {
-    for (int i = 0; i < count; i++) {
+// Khoi tao hat cho hieu ung
+void initParticles(Particle* particles, int count, float x, float y, float z, int isExplosion, int isWingTrail)
+{
+    // Thiet lap vi tri, van toc, thoi gian xuat hien cho hat
+    for (int i = 0; i < count; i++)
+    {
         particles[i].x = x;
         particles[i].y = y;
         particles[i].z = z;
-        if (isExplosion) {
+        if (isExplosion)
+        {
             particles[i].vx = ((float)rand() / RAND_MAX - 0.5f) * 0.5f;
             particles[i].vy = ((float)rand() / RAND_MAX - 0.5f) * 0.5f;
             particles[i].vz = ((float)rand() / RAND_MAX - 0.5f) * 0.5f;
             particles[i].isFire = 1;
             particles[i].life = 1.0f;
-        } else if (isWingTrail) {
+        }
+        else if (isWingTrail)
+        {
             float radDir = radians(direction);
             float baseVx = -0.1f * cos(radDir);
             float baseVz = 0.1f * sin(radDir);
@@ -110,7 +121,9 @@ void initParticles(Particle* particles, int count, float x, float y, float z, in
             particles[i].vz = baseVz + ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
             particles[i].isFire = ((float)rand() / RAND_MAX < 0.2f) ? 1 : 0;
             particles[i].life = 2.0f;
-        } else {
+        }
+        else
+        {
             float radDir = radians(direction);
             float baseVx = -0.3f * cos(radDir);
             float baseVz = 0.3f * sin(radDir);
@@ -123,30 +136,43 @@ void initParticles(Particle* particles, int count, float x, float y, float z, in
     }
 }
 
-void initClouds() {
-    for (int i = 0; i < CLOUD_COUNT; i++) {
-        clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
-        clouds[i].y = 10.0f + ((float)rand() / RAND_MAX) * 20.0f;
-        clouds[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
-        clouds[i].vx = 0.0f;
+// Khoi tao dam may
+void initClouds()
+{
+    // Dat dam may ngau nhien quanh may bay voi do cao cao  va chuyen dong
+    for (int i = 0; i < CLOUD_COUNT; i++)
+    {
+        clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 300.0f;
+        clouds[i].y = 30.0f + ((float)rand() / RAND_MAX) * 30.0f; // Do cao tu 15.0 den 30.0
+        clouds[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 300.0f;
+        clouds[i].vx = ((float)rand() / RAND_MAX - 0.5f) * 0.05f; // Van toc nho de troi
         clouds[i].vy = 0.0f;
-        clouds[i].vz = 0.0f;
+        clouds[i].vz = ((float)rand() / RAND_MAX - 0.5f) * 0.05f;
         clouds[i].life = 1.0f;
         clouds[i].isFire = 0;
     }
 }
 
-void initTrees() {
-    for (int i = 0; i < TREE_COUNT; i++) {
-        do {
+// Khoi tao cay
+void initTrees()
+{
+    // Dat cay ngau nhien
+    for (int i = 0; i < TREE_COUNT; i++)
+    {
+        do
+        {
             trees[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
             trees[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
         } while (fabs(trees[i].x) < 10.0f && fabs(trees[i].z) < 2.0f);
     }
 }
 
-void initEnemies() {
-    for (int i = 0; i < MAX_ENEMIES; i++) {
+// Khoi tao vat can
+void initEnemies()
+{
+    // Thiet lap vat can ban dau khong hoat dong
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
         enemies[i].x = 0.0f;
         enemies[i].z = 0.0f;
         enemies[i].life = 0.0f;
@@ -154,32 +180,42 @@ void initEnemies() {
     }
 }
 
-void updateRadar() {
-    // Update existing enemies
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (enemies[i].active) {
-            enemies[i].life -= 0.016f; // Assume 60 FPS (1/60 = 0.016 seconds per frame)
-            if (enemies[i].life <= 0.0f) {
+//  radar
+void Radar()
+{
+    // Cap nhat vat can, tao vat can moi ngau nhien
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        if (enemies[i].active)
+        {
+            enemies[i].life -= 0.016f;
+            if (enemies[i].life <= 0.0f)
+            {
                 enemies[i].active = 0;
             }
         }
     }
 
-    // Randomly spawn new enemies
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (!enemies[i].active && (float)rand() / RAND_MAX < 0.02f) { // 2% chance per frame
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        if (!enemies[i].active && (float)rand() / RAND_MAX < 0.02f)
+        {
             float angle = (float)rand() / RAND_MAX * 2.0f * PI;
             float distance = (float)rand() / RAND_MAX * RADAR_RANGE;
             enemies[i].x = distance * cos(angle);
             enemies[i].z = distance * sin(angle);
-            enemies[i].life = 3.0f + (float)rand() / RAND_MAX * 2.0f; // 3-5 seconds
+            enemies[i].life = 3.0f + (float)rand() / RAND_MAX * 2.0f;
             enemies[i].active = 1;
         }
     }
 }
 
-void drawTrees() {
-    for (int i = 0; i < TREE_COUNT; i++) {
+// Ve cay
+void drawTrees()
+{
+    // Ve cay voi than (khoi lap phuong) va tan (hinh non)
+    for (int i = 0; i < TREE_COUNT; i++)
+    {
         float y = terrainHeight(trees[i].x, trees[i].z);
         glPushMatrix();
         glTranslatef(trees[i].x, y, trees[i].z);
@@ -198,20 +234,13 @@ void drawTrees() {
     }
 }
 
-void drawRunway() {
-    glColor3f(0.5f, 0.5f, 0.5f);
-    glBegin(GL_QUADS);
-    float y = terrainHeight(0.0f, 0.0f) + 0.01f;
-    glVertex3f(-10.0f, y, -2.0f);
-    glVertex3f(10.0f, y, -2.0f);
-    glVertex3f(10.0f, y, 2.0f);
-    glVertex3f(-10.0f, y, 2.0f);
-    glEnd();
-}
-
-void moveParticles(Particle* particles, int count, float dt, int isExplosion) {
-    for (int i = 0; i < count; i++) {
-        if (particles[i].life > 0.0f) {
+// Di chuyen hat
+void moveParticles(Particle* particles, int count, float dt, int isExplosion)
+{
+    for (int i = 0; i < count; i++)
+    {
+        if (particles[i].life > 0.0f)
+        {
             particles[i].x += particles[i].vx * dt;
             particles[i].y += particles[i].vy * dt;
             particles[i].z += particles[i].vz * dt;
@@ -220,44 +249,72 @@ void moveParticles(Particle* particles, int count, float dt, int isExplosion) {
     }
 }
 
-void moveClouds() {
-    for (int i = 0; i < CLOUD_COUNT; i++) {
-        if (clouds[i].life > 0.0f) {
+// Di chuyen dam may
+void moveClouds()
+{
+    // Cap nhat vi tri dam may va tai tao neu qua xa
+    for (int i = 0; i < CLOUD_COUNT; i++)
+    {
+        if (clouds[i].life > 0.0f)
+        {
+            clouds[i].x += clouds[i].vx * 0.016f;
+            clouds[i].z += clouds[i].vz * 0.016f;
+            // Them hieu ung bong benh
+            clouds[i].y += 0.02f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.001f + i);
             float dx = clouds[i].x - xpos;
             float dz = clouds[i].z - zpos;
-            if (dx * dx + dz * dz > 200.0f * 200.0f) {
-                clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
-                clouds[i].y = 10.0f + ((float)rand() / RAND_MAX) * 20.0f;
-                clouds[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 200.0f;
+            if (dx * dx + dz * dz > 300.0f * 300.0f)
+            {
+                clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 300.0f;
+                clouds[i].y = 15.0f + ((float)rand() / RAND_MAX) * 15.0f;
+                clouds[i].z = zpos + ((float)rand() / RAND_MAX - 0.5f) * 300.0f;
+                clouds[i].vx = ((float)rand() / RAND_MAX - 0.5f) * 0.05f;
+                clouds[i].vz = ((float)rand() / RAND_MAX - 0.5f) * 0.05f;
                 clouds[i].life = 1.0f;
             }
         }
     }
 }
 
-void drawParticles(Particle* particles, int count, int isFireDefault, int isWingTrail) {
+// Ve hat
+void drawParticles(Particle* particles, int count, int isFireDefault, int isWingTrail)
+{
+    // Ve hat voi mau sac va do trong suot
     glEnable(GL_BLEND);
-    if ((particles == afterburner || isWingTrail) && isFireDefault) {
+    if ((particles == afterburner || isWingTrail) && isFireDefault)
+    {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    } else {
+    }
+    else
+    {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
-    for (int i = 0; i < count; i++) {
-        if (particles[i].life > 0.0f) {
+    for (int i = 0; i < count; i++)
+    {
+        if (particles[i].life > 0.0f)
+        {
             glPointSize(isWingTrail ? 4.0f : (particles == afterburner ? 8.0f : 15.0f));
             glBegin(GL_POINTS);
-            if (particles == afterburner || isWingTrail) {
-                if (particles[i].isFire) {
+            if (particles == afterburner || isWingTrail)
+            {
+                if (particles[i].isFire)
+                {
                     float intensity = particles[i].life;
                     glColor4f(1.0f, isWingTrail ? 0.9f : 0.7f + intensity * 0.3f, 
                               isWingTrail ? 0.8f : 0.2f * intensity, 
                               isWingTrail ? 0.7f * intensity : 0.9f * intensity);
-                } else {
+                }
+                else
+                {
                     glColor4f(0.3f, 0.3f, 0.3f, particles[i].life * (isWingTrail ? 0.8f : 0.6f));
                 }
-            } else if (isFireDefault) {
+            }
+            else if (isFireDefault)
+            {
                 glColor4f(1.0f, 0.5f, 0.0f, particles[i].life);
-            } else {
+            }
+            else
+            {
                 glColor4f(0.5f, 0.5f, 0.5f, particles[i].life);
             }
             glVertex3f(particles[i].x, particles[i].y, particles[i].z);
@@ -268,22 +325,36 @@ void drawParticles(Particle* particles, int count, int isFireDefault, int isWing
     glPointSize(1.0f);
 }
 
-void drawClouds() {
+// Ve dam may
+void drawClouds()
+{
+    // Ve dam may bang nhieu hinh cau voi do trong suot bien doi
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    for (int i = 0; i < CLOUD_COUNT; i++) {
-        if (clouds[i].life > 0.0f) {
-            glColor4f(1.0f, 1.0f, 1.0f, 0.7f);
+    for (int i = 0; i < CLOUD_COUNT; i++)
+    {
+        if (clouds[i].life > 0.0f)
+        {
             glPushMatrix();
             glTranslatef(clouds[i].x, clouds[i].y, clouds[i].z);
-            glutSolidSphere(2.0f, 10, 10);
+            // Ve nhieu hinh cau de tao hinh dang mem mai
+            float alpha = 0.4f + 0.2f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.001f + i); // Do trong suot thay doi
+            glColor4f(1.0f, 1.0f, 1.0f, alpha);
+            glutSolidSphere(2.0f, 10, 10); // Hinh cau chinh
+            glTranslatef(2.0f, 0.0f, 0.0f);
+            glutSolidSphere(2.0f, 10, 10); // Hinh cau phu
+            glTranslatef(-4.0f, 0.0f, 0.0f);
+            glutSolidSphere(2.0f, 10, 10); // Hinh cau phu
             glPopMatrix();
         }
     }
     glDisable(GL_BLEND);
 }
 
-void resetSimulation() {
+// Dat lai mo phong
+void resetSimulation()
+{
+    // Dat lai vi tri, trang thai ban dau
     xpos = -8.0f;
     ypos = terrainHeight(-8.0f, 0.0f) + 0.2f;
     zpos = 0.0f;
@@ -312,151 +383,163 @@ void resetSimulation() {
     printf("Da dat lai trang thai ban dau tren duong bang.\n");
 }
 
-void plane() {
-    if (isWireframe) {
+// Ve may bay
+void plane()
+{
+    // Ve may bay voi cac hinh khoi co ban
+    if (isWireframe)
+    {
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    } else {
+    }
+    else
+    {
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     }
 
     glColor3d(1.0, 0.0, 0.0);
     glPushMatrix();
-        glTranslated(0, 0, 0);
-        glScaled(3, 0.4, 0.5);
-        glutSolidSphere(1, 30, 30);
+    glTranslated(0, 0, 0);
+    glScaled(3, 0.4, 0.5);
+    glutSolidSphere(1, 30, 30);
     glPopMatrix();
 
     glColor3d(0, 0, 0);
     glPushMatrix();
-        glTranslated(1.7, 0.1, 0);
-        glScaled(1.5, 0.7, 0.8);
-        glRotated(40, 0, 1, 0);
-        glutSolidSphere(0.45, 30, 30);
+    glTranslated(1.7, 0.1, 0);
+    glScaled(1.5, 0.7, 0.8);
+    glRotated(40, 0, 1, 0);
+    glutSolidSphere(0.45, 30, 30);
     glPopMatrix();
 
     glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
-        glTranslated(0, 0, 1.2);
-        glRotated(-50, 0, 1, 0);
-        glScaled(0.7, 0.1, 3);
-        glRotated(25, 0, 1, 0);
-        glutSolidCube(1);
+    glTranslated(0, 0, 1.2);
+    glRotated(-50, 0, 1, 0);
+    glScaled(0.7, 0.1, 3);
+    glRotated(25, 0, 1, 0);
+    glutSolidCube(1);
     glPopMatrix();
 
     glPushMatrix();
-        glTranslated(-0.3, -0.15, 1.5);
-        glRotated(90, 0, 1, 0);
-        glScaled(0.1, 0.1, 0.9);
-        glutSolidTorus(0.5, 0.5, 50, 50);
+    glTranslated(-0.3, -0.15, 1.5);
+    glRotated(90, 0, 1, 0);
+    glScaled(0.1, 0.1, 0.9);
+    glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
     glPushMatrix();
-        glTranslated(0.2, -0.15, 0.9);
-        glRotated(90, 0, 1, 0);
-        glScaled(0.1, 0.1, 0.9);
-        glutSolidTorus(0.5, 0.5, 50, 50);
-    glPopMatrix();
-
-    glColor3f(1.0f, 1.0f, 0.0f);
-    glPushMatrix();
-        glTranslated(0, 0, -1.2);
-        glRotated(50, 0, 1, 0);
-        glScaled(0.7, 0.1, 3);
-        glRotated(-25, 0, 1, 0);
-        glutSolidCube(1);
-    glPopMatrix();
-
-    glPushMatrix();
-        glTranslated(-0.3, -0.15, -1.5);
-        glRotated(90, 0, 1, 0);
-        glScaled(0.1, 0.1, 0.9);
-        glutSolidTorus(0.5, 0.5, 50, 50);
-    glPopMatrix();
-    glPushMatrix();
-        glTranslated(0.2, -0.15, -0.9);
-        glRotated(90, 0, 1, 0);
-        glScaled(0.1, 0.1, 0.9);
-        glutSolidTorus(0.5, 0.5, 50, 50);
+    glTranslated(0.2, -0.15, 0.9);
+    glRotated(90, 0, 1, 0);
+    glScaled(0.1, 0.1, 0.9);
+    glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
 
     glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
-        glTranslated(-2.8, 0, 0);
-        glScaled(0.8, 0.5, 0.3);
-        glPushMatrix();
-            glTranslated(0.4, 0, 1.5);
-            glRotated(-30, 0, 1, 0);
-            glScaled(0.7, 0.1, 3);
-            glRotated(10, 0, 1, 0);
-            glutSolidCube(1);
-        glPopMatrix();
-        glPushMatrix();
-            glTranslated(0.4, 0, -1.5);
-            glRotated(30, 0, 1, 0);
-            glScaled(0.7, 0.1, 3);
-            glRotated(-10, 0, 1, 0);
-            glutSolidCube(1);
-        glPopMatrix();
+    glTranslated(0, 0, -1.2);
+    glRotated(50, 0, 1, 0);
+    glScaled(0.7, 0.1, 3);
+    glRotated(-25, 0, 1, 0);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslated(-0.3, -0.15, -1.5);
+    glRotated(90, 0, 1, 0);
+    glScaled(0.1, 0.1, 0.9);
+    glutSolidTorus(0.5, 0.5, 50, 50);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslated(0.2, -0.15, -0.9);
+    glRotated(90, 0, 1, 0);
+    glScaled(0.1, 0.1, 0.9);
+    glutSolidTorus(0.5, 0.5, 50, 50);
     glPopMatrix();
 
     glColor3f(1.0f, 1.0f, 0.0f);
     glPushMatrix();
-        glTranslated(-2.7, 0.5, 0);
-        glRotated(45, 0, 0, 1);
-        glScaled(0.8, 2, 0.1);
-        glRotated(-20, 0, 0, 1);
-        glutSolidCube(0.5);
+    glTranslated(-2.8, 0, 0);
+    glScaled(0.8, 0.5, 0.3);
+    glPushMatrix();
+    glTranslated(0.4, 0, 1.5);
+    glRotated(-30, 0, 1, 0);
+    glScaled(0.7, 0.1, 3);
+    glRotated(10, 0, 1, 0);
+    glutSolidCube(1);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslated(0.4, 0, -1.5);
+    glRotated(30, 0, 1, 0);
+    glScaled(0.7, 0.1, 3);
+    glRotated(-10, 0, 1, 0);
+    glutSolidCube(1);
+    glPopMatrix();
     glPopMatrix();
 
-    if (gearDown) {
+    glColor3f(1.0f, 1.0f, 0.0f);
+    glPushMatrix();
+    glTranslated(-2.7, 0.5, 0);
+    glRotated(45, 0, 0, 1);
+    glScaled(0.8, 2, 0.1);
+    glRotated(-20, 0, 0, 1);
+    glutSolidCube(0.5);
+    glPopMatrix();
+
+    if (gearDown)
+    {
         glColor3f(0.1f, 0.1f, 0.1f);
         glPushMatrix();
-            glTranslated(1.5, -0.4, 0.0);
-            glScaled(0.1, 0.3, 0.1);
-            glutSolidCube(1);
+        glTranslated(1.5, -0.4, 0.0);
+        glScaled(0.1, 0.3, 0.1);
+        glutSolidCube(1);
         glPopMatrix();
         glColor3f(0.05f, 0.05f, 0.05f);
         glPushMatrix();
-            glTranslated(1.5, -0.55, 0.0);
-            glRotated(90, 1, 0, 0);
-            glutSolidTorus(0.05, 0.15, 10, 20);
+        glTranslated(1.5, -0.55, 0.0);
+        glRotated(90, 1, 0, 0);
+        glutSolidTorus(0.05, 0.15, 10, 20);
         glPopMatrix();
 
         glColor3f(0.1f, 0.1f, 0.1f);
         glPushMatrix();
-            glTranslated(0.0, -0.4, 0.8);
-            glScaled(0.1, 0.3, 0.1);
-            glutSolidCube(1);
+        glTranslated(0.0, -0.4, 0.8);
+        glScaled(0.1, 0.3, 0.1);
+        
+        glutSolidCube(1);
         glPopMatrix();
         glColor3f(0.05f, 0.4, 0.05f);
         glPushMatrix();
-            glTranslated(0.0, -0.55, 0.8);
-            glRotated(90, 1, 0, 0);
-            glutSolidTorus(0.05, 0.15, 10, 20);
+        glTranslated(0.0, -0.55, 0.8);
+        glRotated(90, 1, 0, 0);
+        glutSolidTorus(0.05, 0.15, 10, 20);
         glPopMatrix();
 
         glColor3f(0.1f, 0.1f, 0.1f);
         glPushMatrix();
-            glTranslated(0.0, -0.4, -0.8);
-            glScaled(0.1, 0.3, 0.1);
-            glutSolidCube(1);
+        glTranslated(0.0, -0.4, -0.8);
+        glScaled(0.1, 0.3, 0.1);
+        glutSolidCube(1);
         glPopMatrix();
         glColor3f(0.05f, 0.05f, 0.05f);
         glPushMatrix();
-            glTranslated(0.0, -0.55, -0.8);
-            glRotated(90, 1, 0, 0);
-            glutSolidTorus(0.05, 0.15, 10, 20);
+        glTranslated(0.0, -0.55, -0.8);
+        glRotated(90, 1, 0, 0);
+        glutSolidTorus(0.05, 0.15, 10, 20);
         glPopMatrix();
     }
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
-void drawTerrain() {
+// Ve dia hinh, cay
+void drawTerrain()
+{
     glColor3f(0.3f, 0.2f, 0.1f);
     glBegin(GL_QUADS);
     float view_range = 100.0f;
-    for (float x = xpos - view_range; x < xpos + view_range; x += 1.0f) {
-        for (float z = zpos - view_range; z < zpos + view_range; z += 1.0f) {
+    for (float x = xpos - view_range; x < xpos + view_range; x += 1.0f)
+    {
+        for (float z = zpos - view_range; z < zpos + view_range; z += 1.0f)
+        {
             float h1 = terrainHeight(x, z);
             float h2 = terrainHeight(x + 1.0f, z);
             float h3 = terrainHeight(x + 1.0f, z + 1.0f);
@@ -468,35 +551,43 @@ void drawTerrain() {
         }
     }
     glEnd();
-    drawRunway();
+    
     drawTrees();
 }
 
-void landmarks() {
+// Ve luoi tham chieu
+void landmarks()
+{
     GLfloat i;
     glColor3f(0.0f, 1.0f, 0.0f);
     glBegin(GL_LINES);
     float grid_range = 10000.0f;
-    for (i = xpos - grid_range; i <= xpos + grid_range; i += 1.0f) {
+    for (i = xpos - grid_range; i <= xpos + grid_range; i += 1.0f)
+    {
         glVertex3f(xpos - grid_range, -0.5f, i);
         glVertex3f(xpos + grid_range, -0.5f, i);
     }
-    for (i = zpos - grid_range; i <= zpos + grid_range; i += 1.0f) {
+    for (i = zpos - grid_range; i <= zpos + grid_range; i += 1.0f)
+    {
         glVertex3f(i, -0.5f, zpos - grid_range);
         glVertex3f(i, -0.5f, zpos + grid_range);
     }
     glEnd();
 }
 
-GLfloat Abs(GLfloat a) {
+GLfloat Abs(GLfloat a)
+{
     return (a < 0.0f) ? -a : a;
 }
 
-GLfloat radians(GLfloat a) {
+GLfloat radians(GLfloat a)
+{
     return a * PI / 180.0f;
 }
 
-void drawAltitudeBar() {
+// Ve thanh do cao
+void drawAltitudeBar()
+{
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -543,11 +634,13 @@ void drawAltitudeBar() {
 
     glColor3f(1.0f, 1.0f, 1.0f);
     char label[10];
-    for (float alt = 0.0f; alt <= 0.10f; alt += 0.025f) {
+    for (float alt = 0.0f; alt <= 0.10f; alt += 0.025f)
+    {
         float yPos = 50 + (alt / maxDisplayAltitude) * 500;
         glRasterPos2f(85, yPos - 5);
         snprintf(label, sizeof(label), "%.2f km", alt * 150.0f);
-        for (char* c = label; *c != '\0'; c++) {
+        for (char* c = label; *c != '\0'; c++)
+        {
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
         }
     }
@@ -561,7 +654,9 @@ void drawAltitudeBar() {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void drawCompass() {
+// Ve la ban
+void drawCompass()
+{
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -579,7 +674,8 @@ void drawCompass() {
 
     glColor3f(0.2f, 0.2f, 0.2f);
     glBegin(GL_POLYGON);
-    for (int i = 0; i < 360; i += 5) {
+    for (int i = 0; i < 360; i += 5)
+    {
         float rad = radians(i);
         glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
     }
@@ -588,7 +684,8 @@ void drawCompass() {
     glLineWidth(2.0f);
     glColor3f(1.0f, 1.0f, 1.0f);
     glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 360; i += 5) {
+    for (int i = 0; i < 360; i += 5)
+    {
         float rad = radians(i);
         glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
     }
@@ -598,12 +695,14 @@ void drawCompass() {
     glColor3f(1.0f, 1.0f, 1.0f);
     const char* directions[] = {"N", "E", "S", "W"};
     float labelAngles[] = {0.0f, 90.0f, 180.0f, 270.0f};
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++)
+    {
         float rad = radians(labelAngles[i]);
         float labelX = centerX + (radius + 10.0f) * cos(rad);
         float labelY = centerY + (radius + 10.0f) * sin(rad);
         glRasterPos2f(labelX - 5.0f, labelY - 5.0f);
-        for (const char* c = directions[i]; *c != '\0'; c++) {
+        for (const char* c = directions[i]; *c != '\0'; c++)
+        {
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
         }
     }
@@ -632,7 +731,9 @@ void drawCompass() {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void drawRadar() {
+// Ve radar
+void drawRadar()
+{
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -647,48 +748,49 @@ void drawRadar() {
     float centerX = 1000.0f;
     float centerY = 100.0f;
     float radius = 40.0f;
-    float scale = radius / RADAR_RANGE; // Pixels per unit
+    float scale = radius / RADAR_RANGE;
 
-    // Draw radar background (dark gray)
     glColor3f(0.2f, 0.2f, 0.2f);
     glBegin(GL_POLYGON);
-    for (int i = 0; i < 360; i += 5) {
+    for (int i = 0; i < 360; i += 5)
+    {
         float rad = radians(i);
         glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
     }
     glEnd();
 
-    // Draw radar border (white)
     glLineWidth(2.0f);
     glColor3f(1.0f, 1.0f, 1.0f);
     glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 360; i += 5) {
+    for (int i = 0; i < 360; i += 5)
+    {
         float rad = radians(i);
         glVertex2f(centerX + radius * cos(rad), centerY + radius * sin(rad));
     }
     glEnd();
     glLineWidth(1.0f);
 
-    // Draw radar sweep (green semi-transparent sector)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    float sweepAngle = fmod(glutGet(GLUT_ELAPSED_TIME) / 4000.0f * 360.0f, 360.0f); // 4-second rotation
+    float sweepAngle = fmod(glutGet(GLUT_ELAPSED_TIME) / 4000.0f * 360.0f, 360.0f);
     glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(centerX, centerY);
-    for (int i = 0; i <= 30; i++) {
+    for (int i = 0; i <= 30; i++)
+    {
         float angle = radians(sweepAngle + i);
         glVertex2f(centerX + radius * cos(angle), centerY + radius * sin(angle));
     }
     glEnd();
     glDisable(GL_BLEND);
 
-    // Draw enemies as red dots
     glPointSize(5.0f);
     glColor3f(1.0f, 0.0f, 0.0f);
     glBegin(GL_POINTS);
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (enemies[i].active) {
+    for (int i = 0; i < MAX_ENEMIES; i++)
+    {
+        if (enemies[i].active)
+        {
             float screenX = centerX + enemies[i].x * scale;
             float screenZ = centerY + enemies[i].z * scale;
             glVertex2f(screenX, screenZ);
@@ -697,15 +799,14 @@ void drawRadar() {
     glEnd();
     glPointSize(1.0f);
 
-    // Draw airplane as a small white triangle
     glPushMatrix();
     glTranslatef(centerX, centerY, 0.0f);
     glRotatef(-direction, 0.0f, 0.0f, 1.0f);
     glColor3f(1.0f, 1.0f, 1.0f);
     glBegin(GL_TRIANGLES);
-    glVertex2f(0.0f, 6.0f);   // Nose
-    glVertex2f(-3.0f, -3.0f); // Left wing
-    glVertex2f(3.0f, -3.0f);  // Right wing
+    glVertex2f(0.0f, 6.0f); // S?a t? glVertex pinch thành glVertex2f
+    glVertex2f(-3.0f, -3.0f);
+    glVertex2f(3.0f, -3.0f);
     glEnd();
     glPopMatrix();
 
@@ -718,23 +819,29 @@ void drawRadar() {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void advanceScene() {
+// Cap nhat canh
+void advanceScene()
+{
+    // Cap nhat vi tri, toc do, hat, va cham
     GLfloat xDelta, zDelta, yDelta;
 
     float terrainH = terrainHeight(xpos, zpos);
     gearDown = (ypos <= terrainH + GROUND_THRESHOLD || ypos <= 0.25f || speed < GROUND_SPEED) ? 1 : 0;
 
-    if (isThrusting && !gearDown) {
+    if (isThrusting && !gearDown)
+    {
         speed += THRUST;
         if (speed > MAX_SPEED) speed = MAX_SPEED;
     }
 
-    if (isCharging) {
+    if (isCharging)
+    {
         initParticles(boosters, PARTICLE_COUNT, xpos - 3.0f, ypos - 0.2f, zpos, 0, 0);
     }
     moveParticles(boosters, PARTICLE_COUNT, 0.016f, 0);
 
-    if (speed > 0.0f || isThrusting) {
+    if (speed > 0.0f || isThrusting)
+    {
         float leftX, leftY, leftZ, rightX, rightY, rightZ;
         localToWorld(-0.3f, -0.15f, 1.5f, &leftX, &leftY, &leftZ);
         localToWorld(-0.3f, -0.15f, -1.5f, &rightX, &rightY, &rightZ);
@@ -743,7 +850,8 @@ void advanceScene() {
     }
     moveParticles(afterburner, AFTERBURNER_COUNT, 0.016f, 0);
 
-    if (speed > 0.0f) {
+    if (speed > 0.0f)
+    {
         float wingLeftX, wingLeftY, wingLeftZ, wingRightX, wingRightY, wingRightZ;
         localToWorld(0.4f, 0.0f, 3.0f, &wingLeftX, &wingLeftY, &wingLeftZ);
         localToWorld(0.4f, 0.0f, -3.0f, &wingRightX, &wingRightY, &wingRightZ);
@@ -756,19 +864,22 @@ void advanceScene() {
 
     moveClouds();
 
-    updateRadar();
+    Radar();
 
-    if (speed > 0.0f && gearDown) {
+    if (speed > 0.0f && gearDown)
+    {
         float drag = DECELERATION + 0.0001f * Abs(angleX);
         speed -= drag;
         if (speed < 0.0f) speed = 0.0f;
     }
 
-    if (!gearDown && speed < 0.5f * MAX_SPEED) {
+    if (!gearDown && speed < 0.5f * MAX_SPEED)
+    {
         speed = 0.5f * MAX_SPEED;
     }
 
-    if (speed > 0.0f) {
+    if (speed > 0.0f)
+    {
         xDelta = speed * cos(radians(direction));
         zDelta = speed * sin(radians(direction));
         yDelta = speed * sin(radians(angleX));
@@ -784,7 +895,8 @@ void advanceScene() {
         if (zpos < -WORLD_SIZE) zpos += 2 * WORLD_SIZE;
 
         terrainH = terrainHeight(xpos, zpos);
-        if (ypos < terrainH) {
+        if (ypos < terrainH)
+        {
             printf("Va cham! No va dat lai.\n");
             initParticles(explosion, PARTICLE_COUNT, xpos, ypos, zpos, 1, 0);
             resetSimulation();
@@ -792,12 +904,15 @@ void advanceScene() {
     }
 
     static int frameCount = 0;
-    if (frameCount++ % 60 == 0) {
+    if (frameCount++ % 60 == 0)
+    {
         printf(" Toc do: %.2f, Nang luong: %.2f\n", ypos / 1000.0f, speed, charge);
     }
 }
 
-void drawHUD() {
+// Ve giao dien nguoi dung
+void drawHUD()
+{
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -812,10 +927,12 @@ void drawHUD() {
     glRasterPos2f(10, 580);
     char hud[100];
     snprintf(hud, sizeof(hud), "Huong: %.1f deg  Khoang cach: %.1f km", heading, distance);
-    for (char* c = hud; *c != '\0'; c++) {
+    for (char* c = hud; *c != '\0'; c++)
+    {
         glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
     }
 
+   
     glColor3f(1.0f, 1.0f, 0.0f);
     const char* controls[] = {
         "Phim Space: Nap nang luong (giu space it nhat 2s)",
@@ -829,9 +946,11 @@ void drawHUD() {
         "Phim Esc: Thoat"
     };
     float y_pos = 580.0f;
-    for (int i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
+    for (int i = 0; i < sizeof(controls) / sizeof(controls[0]); i++)
+    {
         glRasterPos2f(900, y_pos);
-        for (const char* c = controls[i]; *c != '\0'; c++) {
+        for (const char* c = controls[i]; *c != '\0'; c++)
+        {
             glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, *c);
         }
         y_pos -= 20.0f;
@@ -846,19 +965,25 @@ void drawHUD() {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void display() {
+// Ham ve chinh
+void display()
+{
+    // Ve canh, may bay, HUD
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    if (isCockpitView) {
+    if (isCockpitView)
+    {
         camx = xpos + 1.7f * cos(radians(direction));
         camy = ypos + 0.1f;
         camz = zpos - 1.7f * sin(radians(direction));
         gluLookAt(camx, camy, camz,
                   camx + cos(radians(direction)), camy + sin(radians(angleX)), camz - sin(radians(direction)),
                   0.0, 1.0, 0.0);
-    } else {
+    }
+    else
+    {
         camx = xpos - 5.0f * cos(radians(direction));
         camz = zpos + 5.0f * sin(radians(direction));
         camy = 2.0f + ypos;
@@ -871,7 +996,8 @@ void display() {
     glDisable(GL_FOG);
 
     GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
+    if (err != GL_NO_ERROR)
+    {
         printf("Loi OpenGL trong display: %d\n", err);
     }
 
@@ -884,12 +1010,12 @@ void display() {
     drawClouds();
 
     glPushMatrix();
-        float vibe = speed * 0.05f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.01f);
-        glTranslatef(xpos + vibe, ypos, zpos);
-        glRotatef(direction, 0.0f, 1.0f, 0.0f);
-        glRotatef(angleX, 1.0f, 0.0f, 0.0f);
-        glRotatef(angleY, 0.0f, 0.0f, 1.0f);
-        plane();
+    float vibe = speed * 0.05f * sin(glutGet(GLUT_ELAPSED_TIME) * 0.01f);
+    glTranslatef(xpos + vibe, ypos, zpos);
+    glRotatef(direction, 0.0f, 1.0f, 0.0f);
+    glRotatef(angleX, 1.0f, 0.0f, 0.0f);
+    glRotatef(angleY, 0.0f, 0.0f, 1.0f);
+    plane();
     glPopMatrix();
 
     drawHUD();
@@ -898,13 +1024,17 @@ void display() {
     glutSwapBuffers();
 }
 
-void keyboard(unsigned char key, int x, int y) {
-    switch (key) {
+// Xu ly phim
+void keyboard(unsigned char key, int x, int y)
+{
+    switch (key)
+    {
         case 27:
             exit(0);
             break;
         case ' ':
-            if (speed == 0.0f && gearDown) {
+            if (speed == 0.0f && gearDown)
+            {
                 isCharging = 1;
                 charge += 0.01f;
                 if (charge > MAX_CHARGE) charge = MAX_CHARGE;
@@ -926,10 +1056,14 @@ void keyboard(unsigned char key, int x, int y) {
     glutPostRedisplay();
 }
 
-void keyboardUp(unsigned char key, int x, int y) {
-    switch (key) {
+// Xu ly tha phim
+void keyboardUp(unsigned char key, int x, int y)
+{
+    switch (key)
+    {
         case ' ':
-            if (isCharging) {
+            if (isCharging)
+            {
                 isCharging = 0;
                 speed = charge * MAX_SPEED;
                 angleX = charge * 30.0f;
@@ -943,8 +1077,11 @@ void keyboardUp(unsigned char key, int x, int y) {
     glutPostRedisplay();
 }
 
-void specialKeys(int key, int x, int y) {
-    switch (key) {
+// Xu ly phim dac biet
+void specialKeys(int key, int x, int y)
+{
+    switch (key)
+    {
         case GLUT_KEY_UP:
             angleX += PITCH_RATE;
             if (angleX > 45.0f) angleX = 45.0f;
@@ -965,12 +1102,16 @@ void specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
-void idle() {
+// Cap nhat moi khung hinh
+void idle()
+{
     advanceScene();
     glutPostRedisplay();
 }
 
-void reshape(int width, int height) {
+// Thay doi kich thuoc cua so
+void reshape(int width, int height)
+{
     glViewport(0, 0, (GLsizei)width, (GLsizei)height);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -978,7 +1119,10 @@ void reshape(int width, int height) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void initOpenGL() {
+// Khoi tao OpenGL
+void initOpenGL()
+{
+    // Thiet lap anh sang, chat lieu, va cac che do
     GLfloat mat_specular[] = {1.0f, 1.0f, 1.0f, 1.0f};
     GLfloat mat_shininess[] = {100.0f};
     GLfloat light_directional[] = {1.0f, 1.0f, 1.0f, 0.0f};
@@ -1006,7 +1150,8 @@ void initOpenGL() {
     glDisable(GL_FOG);
 
     GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
+    if (err != GL_NO_ERROR)
+    {
         printf("Loi OpenGL trong initOpenGL: %d\n", err);
     }
 
@@ -1019,9 +1164,13 @@ void initOpenGL() {
     initEnemies();
 }
 
-int main(int argc, char* argv[]) {
+// Ham chinh
+int main(int argc, char* argv[])
+{
+    // Khoi tao GLUT va chay vong lap chinh
     srand((unsigned int)time(NULL));
-    if (time(NULL) == -1) {
+    if (time(NULL) == -1)
+    {
         printf("Loi: Khong lay duoc thoi gian cho random.\n");
         return 1;
     }
