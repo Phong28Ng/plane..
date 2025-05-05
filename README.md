@@ -1,3 +1,4 @@
+#include<cstdlib>
 #include <GL/glut.h>
 #include <math.h>
 #include <stdio.h>
@@ -1191,5 +1192,6 @@ int main(int argc, char* argv[])
     glutIdleFunc(idle);
 
     glutMainLoop();
+    system("PAUSE")
     return 0;
 }
