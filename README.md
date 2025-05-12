@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <GL/glut.h>
 #include <math.h>
 #include <stdio.h>
@@ -1037,7 +1038,7 @@ void keyboard(unsigned char key, int x, int y)
     switch (key)
     {
         case 27:
- 
+            exit(0);
             break;
         case ' ':
             if (speed == 0.0f && gearDown)
@@ -1228,6 +1229,6 @@ int main(int argc, char* argv[])
     glutIdleFunc(idle);
 
     glutMainLoop();
-   
+    system("PAUSE");
     return 0;
 }
