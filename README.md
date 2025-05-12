@@ -1,4 +1,3 @@
-#include <cstdlib>
 #include <GL/glut.h>
 #include <math.h>
 #include <stdio.h>
@@ -30,14 +29,15 @@
 // Bien toan cuc
 GLfloat radians(GLfloat a);
 float angleX = 0.0f, angleY = 0.0f; 
+float targetAngleX = 0.0f, targetAngleY = 0.0f; // Target angles for smooth return
 float xpos = 0.0f, ypos = 0.5f, zpos = 0.0f; // Vi tri may bay
 float speed = 0.0f, direction = 0.0f; // Toc do, huong
 float camx = 0.0f, camy = 2.0f, camz = 5.0f; // Vi tri camera
 float charge = 0.0f; // Nang luong nap
 int isCharging = 0, isThrusting = 0, isAutoFlying = 0; // Trang thai nap, day, tu dong
-int isSunny = 1, isCockpitView = 0, gearDown = 1, isWireframe = 0; //  goc nhin, banh xe
+int isSunny = 1, isCockpitView = 0, gearDown = 1, isWireframe = 0; // goc nhin, banh xe
 
-// Cau truc cho hat focal
+// Cau truc cho hat
 typedef struct
 {
     float x, y, z; // Vi tri
@@ -140,7 +140,7 @@ void initParticles(Particle* particles, int count, float x, float y, float z, in
 // Khoi tao dam may
 void initClouds()
 {
-    // Dat dam may ngau nhien quanh may bay voi do cao cao  va chuyen dong
+    // Dat dam may ngau nhien quanh may bay voi do cao cao va chuyen dong
     for (int i = 0; i < CLOUD_COUNT; i++)
     {
         clouds[i].x = xpos + ((float)rand() / RAND_MAX - 0.5f) * 300.0f;
@@ -181,7 +181,7 @@ void initEnemies()
     }
 }
 
-//  radar
+// radar
 void Radar()
 {
     // Cap nhat vat can, tao vat can moi ngau nhien
@@ -363,6 +363,8 @@ void resetSimulation()
     direction = 0.0f;
     angleX = 0.0f;
     angleY = 0.0f;
+    targetAngleX = 0.0f;
+    targetAngleY = 0.0f;
     gearDown = 1;
     charge = 0.0f;
     isCharging = 0;
@@ -381,7 +383,7 @@ void resetSimulation()
     initClouds();
     initTrees();
     initEnemies();
-    printf("Da dat lai trang thai ban dau tren duong bang.\n");
+    printf("Da dat lai trang thai ban dau .\n");
 }
 
 // Ve may bay
@@ -504,10 +506,9 @@ void plane()
         glPushMatrix();
         glTranslated(0.0, -0.4, 0.8);
         glScaled(0.1, 0.3, 0.1);
-        
         glutSolidCube(1);
         glPopMatrix();
-        glColor3f(0.05f, 0.4, 0.05f);
+        glColor3f(0.05f, 0.05f, 0.05f);
         glPushMatrix();
         glTranslated(0.0, -0.55, 0.8);
         glRotated(90, 1, 0, 0);
@@ -805,7 +806,7 @@ void drawRadar()
     glRotatef(-direction, 0.0f, 0.0f, 1.0f);
     glColor3f(1.0f, 1.0f, 1.0f);
     glBegin(GL_TRIANGLES);
-    glVertex2f(0.0f, 6.0f); // S?a t? glVertex pinch thành glVertex2f
+    glVertex2f(0.0f, 6.0f);
     glVertex2f(-3.0f, -3.0f);
     glVertex2f(3.0f, -3.0f);
     glEnd();
@@ -820,10 +821,10 @@ void drawRadar()
     glMatrixMode(GL_MODELVIEW);
 }
 
-// Cap nhat canh
+// Ve canh
 void advanceScene()
 {
-    // Cap nhat vi tri, toc do, hat, va cham
+    //  vi tri, toc do, hat, va cham
     GLfloat xDelta, zDelta, yDelta;
 
     float terrainH = terrainHeight(xpos, zpos);
@@ -878,6 +879,11 @@ void advanceScene()
     {
         speed = 0.5f * MAX_SPEED;
     }
+
+    // Smoothly interpolate angles towards target angles
+    float damping = 0.1f; // Controls how quickly angles return to target
+    angleX += (targetAngleX - angleX) * damping;
+    angleY += (targetAngleY - angleY) * damping;
 
     if (speed > 0.0f)
     {
@@ -937,11 +943,11 @@ void drawHUD()
     glColor3f(1.0f, 1.0f, 0.0f);
     const char* controls[] = {
         "Phim Space: Nap nang luong (giu space it nhat 2s)",
-        "Phim Up: Tang do cao",
-        "Phim Down: Giam do cao",
-        "Phim Left: Quay trai",
-        "Phim Right: Quay phai",
-        "Phim p: reset",
+        "Phim Up: Bay len (nghieng mui len)",
+        "Phim Down: Ha xuong (nghieng mui xuong)",
+        "Phim Left: Re trai (nghieng canh trai)",
+        "Phim Right: Re phai (nghieng canh phai)",
+        "Phim p: Reset",
         "Phim w: Bat/tat che do khung",
         "Phim c: Doi goc nhin (buong lai)",
         "Phim Esc: Thoat"
@@ -1031,7 +1037,7 @@ void keyboard(unsigned char key, int x, int y)
     switch (key)
     {
         case 27:
-            exit(0);
+ 
             break;
         case ' ':
             if (speed == 0.0f && gearDown)
@@ -1084,26 +1090,55 @@ void specialKeys(int key, int x, int y)
     switch (key)
     {
         case GLUT_KEY_UP:
-            angleX += PITCH_RATE;
-            if (angleX > 45.0f) angleX = 45.0f;
-            printf("Tang goc nghieng: goc=%.1f\n", angleX);
+            targetAngleX = 10.0f; // Pitch up (nose up)
+            targetAngleY = 7.0f;  // No roll
+            printf("Bay len, nghieng mui: %.1f do\n", targetAngleX);
             break;
         case GLUT_KEY_DOWN:
-            angleX -= PITCH_RATE;
-            if (angleX < -45.0f) angleX = -45.0f;
-            printf("Giam goc nghieng: goc=%.1f\n", angleX);
+            targetAngleX = - 10.0f; // Pitch down (nose down)
+            targetAngleY = -10.0f;   // No roll
+            printf("Ha xuong, nghieng mui: %.1f do\n", targetAngleX);
             break;
         case GLUT_KEY_LEFT:
-            direction += YAW_RATE;
+            direction += YAW_RATE; 
+            targetAngleY =0.0f;
+            targetAngleX = 0.0f;   // No pitch
+            printf("Re trai, nghieng canh: %.0f do\n", targetAngleX);
             break;
         case GLUT_KEY_RIGHT:
-            direction -= YAW_RATE;
+            direction -= YAW_RATE; 
+            targetAngleY =0.0f;
+            targetAngleX = 10.0f;   // No pitch
+            printf("Re phai, nghieng canh: %.0f do\n", targetAngleX);
             break;
     }
     glutPostRedisplay();
 }
 
-// Cap nhat moi khung hinh
+
+// Xu ly tha phim dac biet
+void specialKeysUp(int key, int x, int y)
+{
+    switch (key)
+    {
+        case GLUT_KEY_LEFT:
+        case GLUT_KEY_RIGHT:
+            
+            targetAngleX = 0.0f;
+            targetAngleY = 0.0f;
+            
+            printf("Tro ve can bang: nghieng canh=%.1f\n", targetAngleY);
+            break;
+        case GLUT_KEY_UP:
+        case GLUT_KEY_DOWN:
+            targetAngleX = 0.0f; // Return to level pitch
+            targetAngleY = 0.0f;
+            printf("Tro ve can bang: nghieng mui=%.1f\n", targetAngleX);
+            break;
+    }
+    glutPostRedisplay();
+}
+
 void idle()
 {
     advanceScene();
@@ -1189,9 +1224,10 @@ int main(int argc, char* argv[])
     glutKeyboardFunc(keyboard);
     glutKeyboardUpFunc(keyboardUp);
     glutSpecialFunc(specialKeys);
+    glutSpecialUpFunc(specialKeysUp);
     glutIdleFunc(idle);
 
     glutMainLoop();
-    system("PAUSE");
+   
     return 0;
 }
